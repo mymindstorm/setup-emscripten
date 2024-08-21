@@ -53,16 +53,16 @@ function run() {
         try {
             const emArgs = {
                 version: yield core.getInput("version"),
-                noInstall: yield core.getInput("no-install"),
-                noCache: yield core.getInput("no-cache"),
+                noInstall: yield core.getBooleanInput("no-install"),
+                noCache: yield core.getBooleanInput("no-cache"),
                 actionsCacheFolder: yield core.getInput("actions-cache-folder"),
                 cacheKey: yield core.getInput("cache-key"),
                 // XXX: update-tags is deprecated and used for backwards compatibility.
-                update: (yield core.getInput("update")) || (yield core.getInput("update-tags"))
+                update: (yield core.getBooleanInput("update")) || (yield core.getBooleanInput("update-tags"))
             };
             let emsdkFolder;
             let foundInCache = false;
-            if (emArgs.version !== "latest" && emArgs.version !== "tot" && emArgs.noCache === "false" && !emArgs.actionsCacheFolder) {
+            if (emArgs.version !== "latest" && emArgs.version !== "tot" && !emArgs.noCache && !emArgs.actionsCacheFolder) {
                 emsdkFolder = yield tc.find('emsdk', emArgs.version, os.arch());
             }
             const cacheKey = emArgs.cacheKey || `${process.env.GITHUB_WORKFLOW}-${emArgs.version}-${os.platform()}-${os.arch()}`;
@@ -86,8 +86,15 @@ function run() {
                 }
             }
             if (!emsdkFolder) {
-                const emsdkArchive = yield tc.downloadTool("https://github.com/emscripten-core/emsdk/archive/main.zip");
-                emsdkFolder = yield tc.extractZip(emsdkArchive);
+                if (emArgs.version !== "latest" && emArgs.version !== "tot") {
+                    const emsdkArchive = yield tc.downloadTool(`https://github.com/emscripten-core/emsdk/archive/${emArgs.version}.zip`);
+                    emsdkFolder = yield tc.extractZip(emsdkArchive);
+                    yield io.mv(path.join(emsdkFolder, `emsdk-${emArgs.version}`), path.join(emsdkFolder, 'emsdk-main'));
+                }
+                else {
+                    const emsdkArchive = yield tc.downloadTool("https://github.com/emscripten-core/emsdk/archive/main.zip");
+                    emsdkFolder = yield tc.extractZip(emsdkArchive);
+                }
             }
             else {
                 foundInCache = true;
@@ -96,7 +103,7 @@ function run() {
             if (os.platform() === "win32") {
                 emsdk = `powershell ${path.join(emsdkFolder, 'emsdk-main', 'emsdk.ps1')}`;
             }
-            if (emArgs.noInstall === "true") {
+            if (emArgs.noInstall) {
                 core.addPath(path.join(emsdkFolder, 'emsdk-main'));
                 core.exportVariable("EMSDK", path.join(emsdkFolder, 'emsdk-main'));
                 return;
@@ -106,7 +113,7 @@ function run() {
                     yield exec.exec(`${emsdk} update`);
                 }
                 yield exec.exec(`${emsdk} install ${emArgs.version}`);
-                if (emArgs.version !== "latest" && emArgs.version !== "tot" && emArgs.noCache === "false" && !emArgs.actionsCacheFolder) {
+                if (emArgs.version !== "latest" && emArgs.version !== "tot" && !emArgs.noCache && !emArgs.actionsCacheFolder) {
                     yield tc.cacheDir(emsdkFolder, 'emsdk', emArgs.version, os.arch());
                 }
             }

@@ -12,18 +12,18 @@ async function run() {
   try {
     const emArgs = {
       version: await core.getInput("version"),
-      noInstall: await core.getInput("no-install"),
-      noCache: await core.getInput("no-cache"),
+      noInstall: await core.getBooleanInput("no-install"),
+      noCache: await core.getBooleanInput("no-cache"),
       actionsCacheFolder: await core.getInput("actions-cache-folder"),
       cacheKey: await core.getInput("cache-key"),
       // XXX: update-tags is deprecated and used for backwards compatibility.
-      update: await core.getInput("update") || await core.getInput("update-tags")
+      update: await core.getBooleanInput("update") || await core.getBooleanInput("update-tags")
     };
 
     let emsdkFolder;
     let foundInCache = false;
 
-    if (emArgs.version !== "latest" && emArgs.version !== "tot" && emArgs.noCache === "false" && !emArgs.actionsCacheFolder) {
+    if (emArgs.version !== "latest" && emArgs.version !== "tot" && !emArgs.noCache && !emArgs.actionsCacheFolder) {
       emsdkFolder = await tc.find('emsdk', emArgs.version, os.arch());
     }
 
@@ -47,8 +47,14 @@ async function run() {
     }
 
     if (!emsdkFolder) {
-      const emsdkArchive = await tc.downloadTool("https://github.com/emscripten-core/emsdk/archive/main.zip");
-      emsdkFolder = await tc.extractZip(emsdkArchive);
+      if (emArgs.version !== "latest" && emArgs.version !== "tot") {
+        const emsdkArchive = await tc.downloadTool(`https://github.com/emscripten-core/emsdk/archive/${emArgs.version}.zip`);
+        emsdkFolder = await tc.extractZip(emsdkArchive);
+        await io.mv(path.join(emsdkFolder, `emsdk-${emArgs.version}`), path.join(emsdkFolder, 'emsdk-main'));
+      } else {
+        const emsdkArchive = await tc.downloadTool("https://github.com/emscripten-core/emsdk/archive/main.zip");
+        emsdkFolder = await tc.extractZip(emsdkArchive);
+      }
     } else {
       foundInCache = true;
     }
@@ -59,7 +65,7 @@ async function run() {
       emsdk = `powershell ${path.join(emsdkFolder, 'emsdk-main', 'emsdk.ps1')}`;
     }
 
-    if (emArgs.noInstall === "true") {
+    if (emArgs.noInstall) {
       core.addPath(path.join(emsdkFolder, 'emsdk-main'));
       core.exportVariable("EMSDK", path.join(emsdkFolder, 'emsdk-main'));
       return;
@@ -72,7 +78,7 @@ async function run() {
 
       await exec.exec(`${emsdk} install ${emArgs.version}`);
 
-      if (emArgs.version !== "latest" && emArgs.version !== "tot" && emArgs.noCache === "false" && !emArgs.actionsCacheFolder) {
+      if (emArgs.version !== "latest" && emArgs.version !== "tot" && !emArgs.noCache && !emArgs.actionsCacheFolder) {
         await tc.cacheDir(emsdkFolder, 'emsdk', emArgs.version, os.arch());
       }
     }
